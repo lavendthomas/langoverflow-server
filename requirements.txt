@@ -1,0 +1,10 @@
+Flask==2.0.2
+itsdangerous==2.0.1
+Jinja2==3.0.3
+MarkupSafe==2.0.1
+Werkzeug==2.0.2
+youtube-dl==2021.12.17
+flask-sse
+gunicorn
+gevent
+flask-cors
