@@ -1,4 +1,5 @@
 from __future__ import unicode_literals, annotations
+from audioop import cross
 from dataclasses import dataclass
 
 import os
@@ -12,20 +13,20 @@ import uuid
 
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS, cross_origin
+from flask_sqlalchemy import SQLAlchemy
 
 from flask_sse import sse
 
-app = Flask(__name__)
-app.config['CORS_HEADERS'] = 'Content-Type'
 
+app = Flask(__name__)
 SECRET_KEY = os.urandom(32)
 app.config['SECRET_KEY'] = SECRET_KEY
-
-
-app = Flask(__name__)
+app.config['CORS_HEADERS'] = 'Content-Type'
 app.config["REDIS_URL"] = "redis://localhost"
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 app.register_blueprint(sse, url_prefix='/stream')
 cors = CORS(app, resources="/*")
+db = SQLAlchemy(app)
 
 
 @app.route('/')
@@ -33,42 +34,58 @@ cors = CORS(app, resources="/*")
 def index():
     return render_template("index.html")
 
+@app.route('/login', methods=['POST'])
+@cross_origin()
+def login():
+    data = json.loads(request.data)
+    username = data['username']
+    user = User(username=username)
+    db.session.add(user)
+    db.session.commit()
+    return user.to_json()
 
 @app.route('/like_comment', methods=['POST', 'GET'])
 @cross_origin()
 def like_comment():
-    question_id = uuid.UUID(request.args.get('qid'))
+    question_id = int(request.args.get('qid'))
     data = json.loads(request.data)
 
-    comment_id = uuid.UUID(data["comment_id"])
+    comment_id = int(data["comment_id"])
     user: str = data['user']
-    question = database['posted_questions'][question_id]
-    if data['action'] == 'like':
-        question.comments[comment_id].add_like(user)
-    elif data['action'] == 'unlike':
-        question.comments[comment_id].remove_like(user)
+    # question: Question = Question.query.filter(Question.id == question_id).one()
+    
+    comment = Comment.query.filter(Comment.id == comment_id).one()
 
-    sse.publish({}, type='comment_liked')
+    if data['action'] == 'like':
+        # comment.add_like(user)
+        comment.like_count += 1
+        db.session.commit()
+    elif data['action'] == 'unlike':
+        # comment.remove_like(user)
+        comment.like_count -= 1
+        db.session.commit()
+
+
+    sse.publish(comment.to_json(), type='comment_liked')
     return "Message sent!"
 
 @app.route('/add_comment', methods=['POST', 'GET'])
 @cross_origin()
 def add_comment():
     print("add_comment")
-    question_id = uuid.UUID(request.args.get('qid'))
+    question_id = int(request.args.get('qid'))
 
     data = json.loads(request.data)
-    print(data, type(data))
     
     # Add the comment to the list of comments
     comment = Comment(
-        author=data['author'],
+        question_id=question_id,
+        author_id=int(data['author_id']),
         comment=data['comment'],
+        like_count=0,
     )
-    database['posted_questions'][question_id].add_comment(comment)
-    database['posted_questions'][question_id].author = "AnotherPerson"
-    print("add_comment, comments: " + str(database['posted_questions'][question_id]))
-
+    db.session.add(comment)
+    db.session.commit()
     sse.publish(comment.to_json(), type='comment_added')
     return "Message sent!"
 
@@ -76,47 +93,60 @@ def add_comment():
 @cross_origin()
 def get_comments():
     print("get_comments")
-    question_id = uuid.UUID(request.args.get('qid'))
+    question_id = int(request.args.get('qid'))
     print("question id: ", question_id)
-    try:
-        question = database['posted_questions'][question_id]
-        print(database['posted_questions'])
-        return jsonify([c.to_json() for c in question.comments.values()])
-    except KeyError:
-        print("Here")
-        return jsonify([])
+    return jsonify([c.to_json() for c in Comment.query.all()])
+
+@app.route('/add_question', methods=['POST'])
+@cross_origin()
+def add_question():
+    data = json.loads(request.data)
+    q = Question(
+        question=data['question'],
+        start_timestamp=data['start_timestamp'],
+        end_timestamp=data['end_timestamp']
+    )
+    db.session.add(q)
+    db.session.commit()
+    return jsonify(q.to_json())
 
 @app.route('/questions', methods=['GET'])
 @cross_origin()
 def get_questions():
     print("get_questions")
-    return jsonify([q.to_json() for q in database['posted_questions'].values()])
+    return jsonify([q.to_json() for q in Question.query.all()])
 
-@app.route('/dump', methods=['GET'])
+
+@app.route('/change_question', methods=['POST'])
 @cross_origin()
-def dump():
-    print("DUMPING THE DAMN DATABASE")
-    save()
+def change_question():
+    question_id = int(request.args.get('qid'))
+    # question = database['posted_questions'][question_id]
+    res = Question.query.filter(Question.id == question_id).one()
+    print(res, type(res))
+    sse.publish(res.to_json(), type='change_question')
+    return res.to_json()
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=False, nullable=False)
+
+    def to_json(self):
+        return {
+            "id": self.id,
+            "username": self.username
+        }
+
+    def __repr__(self):
+        return '<User %r>' % self.username
 
 
-class Question:
-    id: uuid.UUID
-    question: str
-    start_timestamp: int
-    end_timestamp: int
-    comments: dict[uuid.UUID, Comment]
-
-    def __init__(self, question: str, start_timestamp: int, end_timestamp: int) -> None:
-        """
-        :param question: The question to ask
-        :param start_timestamp: The start timestamp of the video in seconds
-        :param end_timestamp: The end timestamp of the video in seconds
-        """
-        self.id = uuid.uuid4()
-        self.question = question
-        self.start_timestamp = start_timestamp
-        self.end_timestamp = end_timestamp
-        self.comments = dict()
+class Question(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question = db.Column(db.Text, nullable=False)
+    start_timestamp = db.Column(db.Integer, nullable=False)
+    end_timestamp = db.Column(db.Integer, nullable=False)
+    # comments = db.relationship('Comment', backref='')
 
     def add_comment(self, comment: Comment):
         print("Question: add_comment")
@@ -129,7 +159,7 @@ class Question:
             'question': self.question,
             'start_timestamp': self.start_timestamp,
             'end_timestamp': self.end_timestamp,
-            'comments': [c.to_json() for c in self.comments.values()]
+            # 'comments': [c.to_json() for c in self.comments.values()]
         }
     
     def __str__(self) -> str:
@@ -142,35 +172,24 @@ class Question:
         return self.id.__hash__()
 
 
-class Comment:
-    id: uuid.UUID
-    author: str
-    comment: str
-    date: datetime
-    like_count: int = 0
-    like_list: set[str] = [] # list of all authors (users) that have liked the comment.
-
-    def __init__(self, author, comment) -> None:
-        self.id = uuid.uuid4()
-        self.author = author
-        self.comment = comment
-        self.date=datetime.now()
-
-    def add_like(self, user: str):
-        if user not in self.like_list:
-            self.like_list.append(user)
-            self.like_count += 1
-
-    def remove_like(self, user: str):
-        pass
+class Comment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    author = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    comment = db.Column(db.Text, nullable=False)
+    date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    like_count = db.Column(db.Integer, nullable=False, default=0)
+    question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
+    # TODO add like list
+    question = db.relationship('Question', backref=db.backref('comments'), lazy=True)
 
     
     def to_json(self):
         return {
             'id': str(self.id),
-            'author': self.author,
+            'author_id': self.author_id,
             'comment': self.comment,
-            'date': self.date.timestamp()
+            'date': self.date,
+            'like_count': self.like_count,
         }
 
     def from_json(self, json_str):
@@ -189,30 +208,7 @@ class Comment:
     def __hash__(self) -> int:
         return self.id.__hash__()
 
-
-database = {}
-
-def load():
-    try:
-        with open("database.db", "r") as f:
-            database = pickle.load(f)
-    except:
-        pass
-
-def save():
-    with open("database.db", "w") as f:
-        pickle.dump(database, f)
-
-questions = [
-    Question("What is the best programming language?", 0, 3),
-    Question("What is the best framework?", 3, 100)]
-if not 'posted_questions' in database:
-    database['posted_questions'] = {q.id: q for q in questions}
+db.create_all()
 
 if __name__ == '__main__':
-    try:
-        load()
-        app.run(host="0.0.0.0", port=int(os.environ['PORT']))
-    except KeyboardInterrupt:
-        print("SAVING THE DAMN DATABASE")
-        save()
+    app.run(host="0.0.0.0", port=int(os.environ['PORT']))

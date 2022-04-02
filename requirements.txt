@@ -8,3 +8,4 @@ flask-sse
 gunicorn
 gevent
 flask-cors
+Flask-SQLAlchemy
