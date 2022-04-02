@@ -14,7 +14,6 @@ import uuid
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
-
 from flask_sse import sse
 
 
@@ -43,6 +42,11 @@ def login():
     db.session.add(user)
     db.session.commit()
     return user.to_json()
+
+@app.route('/user', methods=['POST'])
+@cross_origin()
+def user():
+    User.query.filter(User.username == 'test').one()
 
 @app.route('/like_comment', methods=['POST', 'GET'])
 @cross_origin()
@@ -95,7 +99,7 @@ def get_comments():
     print("get_comments")
     question_id = int(request.args.get('qid'))
     print("question id: ", question_id)
-    return jsonify([c.to_json() for c in Comment.query.all()])
+    return jsonify([c.to_json() for c in Comment.query.order_by(Comment.like_count.desc()).all()])
 
 @app.route('/add_question', methods=['POST'])
 @cross_origin()
@@ -121,11 +125,16 @@ def get_questions():
 @cross_origin()
 def change_question():
     question_id = int(request.args.get('qid'))
-    # question = database['posted_questions'][question_id]
     res = Question.query.filter(Question.id == question_id).one()
     print(res, type(res))
     sse.publish(res.to_json(), type='change_question')
     return res.to_json()
+
+@app.route('/get_seafood', methods=['GET'])
+@cross_origin()
+def get_seafood():
+    return "🐟️"
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -174,7 +183,7 @@ class Question(db.Model):
 
 class Comment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    author = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     comment = db.Column(db.Text, nullable=False)
     date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
     like_count = db.Column(db.Integer, nullable=False, default=0)
