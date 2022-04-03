@@ -7,11 +7,12 @@ from datetime import datetime
 
 import uuid
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
 from flask_sse import sse
 
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 SECRET_KEY = os.urandom(32)
@@ -24,10 +25,34 @@ cors = CORS(app, resources="/*")
 db = SQLAlchemy(app)
 
 
+UPLOAD_FOLDER = '/tmp'
+ALLOWED_EXTENSIONS = {'mp4'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
 @app.route('/')
 @cross_origin()
 def index():
     return render_template("index.html")
+
+
+@app.route('/video', methods=['POST', 'GET'])
+@cross_origin()
+def video():
+    if request.method == 'POST':
+        f = request.files['file']
+        if f and allowed_file(f.filename):
+            f.save(os.path.join(UPLOAD_FOLDER, 'vid.mp4'))
+            return jsonify({"status": "uploaded", "filename": 'vid.mp4'})
+        f.save(os.path.join(UPLOAD_FOLDER, f.filename))
+
+        return jsonify({"status": "uploaded"})
+    else:
+        return send_from_directory(UPLOAD_FOLDER, request.args.get('vid.mp4'))
+
 
 @app.route('/login', methods=['POST'])
 @cross_origin()
