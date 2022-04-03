@@ -72,24 +72,19 @@ def user():
 @app.route('/like_comment', methods=['POST', 'GET'])
 @cross_origin()
 def like_comment():
-    # question_id = int(request.args.get('qid'))
     data = json.loads(request.data)
 
     comment_id = int(data["comment_id"])
     user_id: int = str(data["user"])
     user = User.query.filter(User.id == user_id).one()
-    print("User: ", user)
     
     comment = Comment.query.filter(Comment.id == comment_id).one()
 
     if data['action'] == 'like' and user not in comment.like_list:
-        # comment.add_like(user)
         comment.like_count += 1
-        print(type(comment.like_list))
         comment.like_list.append(user)
         db.session.commit()
     elif data['action'] == 'unlike' and user in comment.like_list:
-        # comment.remove_like(user)
         if comment.like_count > 0:
             comment.like_count -= 1
         db.session.commit()
@@ -101,7 +96,6 @@ def like_comment():
 @app.route('/add_comment', methods=['POST', 'GET'])
 @cross_origin()
 def add_comment():
-    print("add_comment")
     question_id = int(request.args.get('qid'))
 
     data = json.loads(request.data)
@@ -121,9 +115,7 @@ def add_comment():
 @app.route('/get_comments', methods=['GET'])
 @cross_origin()
 def get_comments():
-    print("get_comments")
     question_id = int(request.args.get('qid'))
-    print("question id: ", question_id)
     return jsonify([c.to_json() for c in Comment.query.filter(Comment.question_id == question_id).order_by(Comment.like_count.desc()).all()])
 
 @app.route('/add_question', methods=['POST'])
@@ -142,7 +134,6 @@ def add_question():
 @app.route('/questions', methods=['GET'])
 @cross_origin()
 def get_questions():
-    print("get_questions")
     return jsonify([q.to_json() for q in Question.query.all()])
 
 
@@ -151,7 +142,6 @@ def get_questions():
 def change_question():
     question_id = int(request.args.get('qid'))
     res = Question.query.filter(Question.id == question_id).one()
-    print(res, type(res))
     sse.publish(res.to_json(), type='change_question')
     return res.to_json()
 
@@ -190,9 +180,7 @@ class Question(db.Model):
     # comments = db.relationship('Comment', backref='')
 
     def add_comment(self, comment: Comment):
-        print("Question: add_comment")
         self.comments[comment.id] = comment
-        print("self.comments: " + str(self.comments))
     
     def to_json(self):
         return {
