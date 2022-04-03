@@ -66,7 +66,8 @@ def like_comment():
         db.session.commit()
     elif data['action'] == 'unlike':
         # comment.remove_like(user)
-        comment.like_count -= 1
+        if comment.like_count > 0:
+            comment.like_count -= 1
         db.session.commit()
 
 
@@ -99,7 +100,7 @@ def get_comments():
     print("get_comments")
     question_id = int(request.args.get('qid'))
     print("question id: ", question_id)
-    return jsonify([c.to_json() for c in Comment.query.order_by(Comment.like_count.desc()).all()])
+    return jsonify([c.to_json() for c in Comment.query.filter(Comment.question_id == question_id).order_by(Comment.like_count.desc()).all()])
 
 @app.route('/add_question', methods=['POST'])
 @cross_origin()
