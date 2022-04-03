@@ -1,14 +1,10 @@
 from __future__ import unicode_literals, annotations
-from audioop import cross
 from dataclasses import dataclass
 
 import os
 import json
-import pickle
 from datetime import datetime
 
-from dataclasses import dataclass
-from random import random
 import uuid
 
 from flask import Flask, render_template, jsonify, request
@@ -51,18 +47,21 @@ def user():
 @app.route('/like_comment', methods=['POST', 'GET'])
 @cross_origin()
 def like_comment():
-    question_id = int(request.args.get('qid'))
+    # question_id = int(request.args.get('qid'))
     data = json.loads(request.data)
 
     comment_id = int(data["comment_id"])
-    user: str = data['user']
-    # question: Question = Question.query.filter(Question.id == question_id).one()
+    user_id: int = str(data["user"])
+    user = User.query.filter(User.id == user_id).one()
+    print("User: ", user)
     
     comment = Comment.query.filter(Comment.id == comment_id).one()
 
     if data['action'] == 'like':
         # comment.add_like(user)
         comment.like_count += 1
+        print(type(comment.like_list))
+        comment.like_list.append(user)
         db.session.commit()
     elif data['action'] == 'unlike':
         # comment.remove_like(user)
@@ -92,7 +91,7 @@ def add_comment():
     db.session.add(comment)
     db.session.commit()
     sse.publish(comment.to_json(), type='comment_added')
-    return "Message sent!"
+    return comment.to_json()
 
 @app.route('/get_comments', methods=['GET'])
 @cross_origin()
@@ -137,6 +136,13 @@ def get_seafood():
     return "🐟️"
 
 
+
+tags = db.Table('tags',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('comment_id', db.Integer, db.ForeignKey('comment.id'), primary_key=True)
+)
+
+@dataclass
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=False, nullable=False)
@@ -188,8 +194,8 @@ class Comment(db.Model):
     comment = db.Column(db.Text, nullable=False)
     date = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
     like_count = db.Column(db.Integer, nullable=False, default=0)
+    like_list = db.relationship('User', secondary=tags, lazy='subquery', backref=db.backref("comments", lazy=True))
     question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
-    # TODO add like list
     question = db.relationship('Question', backref=db.backref('comments'), lazy=True)
 
     
@@ -200,6 +206,7 @@ class Comment(db.Model):
             'comment': self.comment,
             'date': self.date,
             'like_count': self.like_count,
+            'like_list': [u.to_json() for u in self.like_list]
         }
 
     def from_json(self, json_str):
