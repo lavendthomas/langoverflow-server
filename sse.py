@@ -64,7 +64,7 @@ def login():
     db.session.commit()
     return user.to_json()
 
-@app.route('/user', methods=['GET'])
+@app.route('/user', methods=['GET', "POST"])
 @cross_origin()
 def user():
     data = json.loads(request.data)
