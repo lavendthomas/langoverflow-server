@@ -57,13 +57,13 @@ def like_comment():
     
     comment = Comment.query.filter(Comment.id == comment_id).one()
 
-    if data['action'] == 'like':
+    if data['action'] == 'like' and user not in comment.like_list:
         # comment.add_like(user)
         comment.like_count += 1
         print(type(comment.like_list))
         comment.like_list.append(user)
         db.session.commit()
-    elif data['action'] == 'unlike':
+    elif data['action'] == 'unlike' and user in comment.like_list:
         # comment.remove_like(user)
         if comment.like_count > 0:
             comment.like_count -= 1
