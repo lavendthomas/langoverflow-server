@@ -79,18 +79,27 @@ def like_comment():
     data = json.loads(request.data)
 
     comment_id = int(data["comment_id"])
-    user_id: int = str(data["user"])
+    user_id: int = int(data["user_id"])
     user = User.query.filter(User.id == user_id).one()
-    
+
     comment = Comment.query.filter(Comment.id == comment_id).one()
 
-    if data['action'] == 'like' and user not in comment.like_list:
+    all_users = [u.id for u in comment.like_list]
+
+    if data['action'] == 'like' and user_id not in all_users:
         comment.like_count += 1
         comment.like_list.append(user)
         db.session.commit()
-    elif data['action'] == 'unlike' and user in comment.like_list:
+    elif data['action'] == 'unlike' and user_id in all_users:
         if comment.like_count > 0:
             comment.like_count -= 1
+            i = 0
+            while i < len(comment.like_list):
+                if comment.like_list[i].id == user_id:
+                    break
+                i += 1
+            if i < len(comment.like_list):
+                comment.like_list.pop(i)
         db.session.commit()
 
 
@@ -135,12 +144,24 @@ def get_comments():
 
 @app.route('/add_question', methods=['POST'])
 @cross_origin()
-def add_question():
+def add_question_form():
     data = json.loads(request.data)
     q = Question(
         question=data['question'],
         start_timestamp=data['start_timestamp'],
         end_timestamp=data['end_timestamp']
+    )
+    db.session.add(q)
+    db.session.commit()
+    return jsonify(q.to_json())
+
+@app.route('/add_question_form', methods=['POST', "GET"])
+@cross_origin()
+def add_question():
+    q = Question(
+        question=request.form['question'],
+        start_timestamp=request.form['start_timestamp'],
+        end_timestamp=request.form.get['end_timestamp']
     )
     db.session.add(q)
     db.session.commit()
