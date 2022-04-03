@@ -67,7 +67,11 @@ def login():
 @app.route('/user', methods=['POST'])
 @cross_origin()
 def user():
-    User.query.filter(User.username == 'test').one()
+    data = json.loads(request.data)
+    user_id = data['user_id']
+    user = User.query.filter(User.id == user_id).one()
+    return user.to_json()
+
 
 @app.route('/like_comment', methods=['POST', 'GET'])
 @cross_origin()
