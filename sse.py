@@ -93,6 +93,17 @@ def like_comment():
     sse.publish(comment.to_json(), type='comment_liked')
     return "Message sent!"
 
+@app.route('/del_comment', methods=['POST'])
+@cross_origin()
+def del_comment():
+    data = json.loads(request.data)
+    comment_id = int(data["comment_id"])
+
+    comment = Comment.query.filter(Comment.id == comment_id).one()
+    db.session.delete(comment)
+    db.session.commit()
+    return "Message sent!"
+
 @app.route('/add_comment', methods=['POST', 'GET'])
 @cross_origin()
 def add_comment():
@@ -177,7 +188,6 @@ class Question(db.Model):
     question = db.Column(db.Text, nullable=False)
     start_timestamp = db.Column(db.Integer, nullable=False)
     end_timestamp = db.Column(db.Integer, nullable=False)
-    # comments = db.relationship('Comment', backref='')
 
     def add_comment(self, comment: Comment):
         self.comments[comment.id] = comment
@@ -188,7 +198,6 @@ class Question(db.Model):
             'question': self.question,
             'start_timestamp': self.start_timestamp,
             'end_timestamp': self.end_timestamp,
-            # 'comments': [c.to_json() for c in self.comments.values()]
         }
     
     def __str__(self) -> str:
